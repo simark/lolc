@@ -1,0 +1,840 @@
+options {
+	STATIC = false;
+	VISITOR = true;
+	MULTI = true;
+	NODE_PREFIX = "AST";
+	NODE_PACKAGE = "ca.polymtl.lol.grammar";
+	NODE_DEFAULT_VOID = true;
+	TRACK_TOKENS = true;
+	VISITOR_EXCEPTION = "LOLVisitException";
+}
+
+PARSER_BEGIN(LOL)
+	package ca.polymtl.lol.grammar;
+	import java.util.Stack;
+	import java.util.HashMap;
+	import ca.polymtl.lol.BinaryOpType;
+	import ca.polymtl.lol.InfArityOpType;
+	import ca.polymtl.lol.LoopLimit;
+	import ca.polymtl.lol.LoopOperation;
+	
+	class LOL {
+		
+		private boolean debug = true;
+		
+		public void setDebug(boolean d) {
+			this.debug = d;
+		}
+		
+		private void enter() {
+			if (debug) {
+				printTabs();
+				
+				StackTraceElement stackTraceElements[] = (new Throwable()).getStackTrace();
+				
+				System.err.println("\033[1;32m" + stackTraceElements[1].toString() + "\033[0m");
+				
+				indent++;
+			}
+		}
+		
+		private void exit() {
+			if (debug) {
+				indent--;
+				
+				printTabs();
+				
+				StackTraceElement stackTraceElements[] = (new Throwable()).getStackTrace();
+				
+				System.err.println("\033[1;31m" + stackTraceElements[1].toString() + "\033[0m");
+			}
+		}
+		
+		private void pushScope() {
+			scopeStack.push(new HashMap<String, Integer>());
+			if (debug) {
+				printTabs();
+				System.err.println("\033[1;33m" + "Scope pushed" + "\033[0m");
+			}
+		}
+		
+		private void popScope() {
+			scopeStack.pop();
+			if (debug) {
+				printTabs();
+				System.err.println("\033[1;33m" + "Scope popped" + "\033[0m");
+			}
+		}
+		
+		private boolean isSymbol(String name) {
+			for (int i = scopeStack.size() - 1; i >= 0; i--) {
+				HashMap<String, Integer> scope = scopeStack.get(i);
+				if (scope.containsKey(name)) {
+					return true;
+				}
+			}
+			
+			return false;
+		}
+		
+		private int getNbParams(String name) {
+			for (int i = scopeStack.size() - 1; i >= 0; i--) {
+				HashMap<String, Integer> scope = scopeStack.get(i);
+				if (scope.containsKey(name)) {
+					return scope.get(name);
+				}
+			}
+			
+			return 0;
+		}
+		
+		private void addSymbol(String name, int nbParams) {
+			HashMap<String, Integer> scope = scopeStack.peek();
+			if (scope.containsKey(name)) {
+				if (debug) {
+					printTabs();
+					System.err.println("\033[1;33m" + "Symbol " + cleanString(name) + "(" + nbParams + ") already exists." + "\033[0m");
+				}
+				return;
+			}
+			
+			if (debug) {
+				printTabs();
+				System.err.println("\033[1;33m" + "Symbol " + cleanString(name) + "(" + nbParams + ") added to the symbol table" + "\033[0m");
+			}
+			scope.put(name, nbParams);
+		}
+		
+		/* 
+		 * Used with function declaration, where the function is registered
+		 * after we entered its scope. It is thus necessary to add the function
+		 * the the parent of the current scope.
+		 */
+		private void addSymbolToParent(String name, int nbParams) {
+			HashMap<String, Integer> removedScope = scopeStack.pop();
+			addSymbol(name, nbParams);
+			scopeStack.push(removedScope);
+		}
+		
+		private String cleanString(String s) {
+			s = s.replaceAll("\n", "\\\\n");
+			s = s.replaceAll("\t", "\\\\t");
+			
+			return s;
+		}
+		
+		private void printTabs() {
+			for (int i = 0; i < indent; i++) {
+				System.err.print("  ");
+			}
+		}
+
+		private int indent = 0;
+		
+		private void p(String s) {
+			if (debug) {
+				printTabs();
+				System.err.println("\033[1;36m" + s + "\033[0m");
+			}
+		}
+		
+		private Stack<HashMap<String, Integer>> scopeStack = new Stack<HashMap<String, Integer>>();
+	}
+
+PARSER_END(LOL)
+
+
+/*SKIP : { " " | "\t" | <"BTW" (~["\n","\r"])* > }*/
+SPECIAL_TOKEN :
+{
+  " " | "\t"
+}
+
+/* 
+ * The code for comments is totally stolen from 
+ * Java1.1.jjt, from the VTransformer example.
+ */
+MORE :
+{
+  "BTW" : IN_SINGLE_LINE_COMMENT
+}
+
+<IN_SINGLE_LINE_COMMENT>
+SKIP :
+{
+  < ~["\n","\r"] >
+}
+
+<IN_SINGLE_LINE_COMMENT>
+TOKEN :
+{
+  <EOL_TOK2 : "\n" | "\r\n" | "\r" > : DEFAULT
+}
+
+MORE :
+{
+  "OBTW" : IN_MULTI_LINE_COMMENT
+}
+
+<IN_MULTI_LINE_COMMENT>
+SKIP :
+{
+  <MULTI_LINE_COMMENT: "TLDR" > : DEFAULT
+}
+
+<IN_MULTI_LINE_COMMENT>
+MORE :
+{
+  < ~[] >
+}
+
+/* Basic language keywords */
+TOKEN : { < EOL_TOK : "\n" | "\r" | "\r\n" > }
+TOKEN : { < COMMA_TOK : "," > }
+TOKEN : { < PROGRAM_END_TOK : "KTHXBYE" > }
+TOKEN : { < PROGRAM_START_TOK : "HAI" > }
+TOKEN : { < VAR_DECL_TOK : "I HAS A" > }
+TOKEN : { < VAR_INIT_TOK : "ITZ" > }
+TOKEN : { < CONSOLE_OUTPUT_TOK : "VISIBLE" > }
+TOKEN : { < EXCL_TOK : "!" > }
+TOKEN : { < CONSOLE_INPUT_TOK : "GIMMEH" > }
+TOKEN : { < ASSIGN_TOK : "R" > }
+TOKEN : { < IT_TOK : "IT" > }
+TOKEN : { < AND_TOK : "AN" > }
+TOKEN : { < CONCAT_TOK : "SMOOSH" > }
+TOKEN : { < CAST_TOK : "IS NOW A" > }
+TOKEN : { < MAKE_TOK : "MAEK" > }
+TOKEN : { < A_TOK : "A" > }
+
+/* Types */
+
+TOKEN : { < NO_TYPE_TOK : "NOOB" > }
+TOKEN : { < BOOL_TYPE_TOK : "TROOF" > }
+TOKEN : { < INT_TYPE_TOK : "NUMBR" > }
+TOKEN : { < FLOAT_TYPE_TOK : "NUMBAR" > }
+TOKEN : { < STRING_TYPE_TOK : "YARN" > }
+
+
+/* Arith */
+TOKEN : { < SUM_OP_TOK : "SUM OF" > }
+TOKEN : { < SUB_OP_TOK : "DIFF OF" > }
+TOKEN : { < MUL_OP_TOK : "PRODUKT OF" > }
+TOKEN : { < DIV_OP_TOK : "QUOSHUNT OF" > }
+TOKEN : { < MOD_OP_TOK : "MOD OF" > }
+TOKEN : { < MAX_OP_TOK : "BIGGR OF" > }
+TOKEN : { < MIN_OP_TOK : "SMALLR OF" > }
+
+/* Logical */
+TOKEN : { < AND_OP_TOK : "BOTH OF" > }
+TOKEN : { < OR_OP_TOK : "EITHER OF" > }
+TOKEN : { < XOR_OP_TOK : "WON OF" > }
+TOKEN : { < NOT_OP_TOK : "NOT" > }
+TOKEN : { < ALL_OP_TOK : "ALL OF" > }
+TOKEN : { < ANY_OP_TOK : "ANY OF" > }
+TOKEN : { < OP_END_TOK : "MKAY" > }
+
+/* Comparison */
+TOKEN : { < EQ_OP_TOK : "BOTH SAEM" > }
+TOKEN : { < NEQ_OP_TOK : "DIFFRINT" > }
+
+/* Literal values */
+TOKEN : { < DECIMAL_TOK : ("-")? (["0"-"9"])+ > }
+TOKEN : { < FLOAT_TOK : ("-")? <DECIMAL_TOK> "." <DECIMAL_TOK> > }
+TOKEN : { < STRING_TOK : "\"" (["a"-"z","A"-"Z","0"-"9","_"," ",".",":","'",",","(",")","!"] | "\\" ( ["n","t","b","r","f","\\","\'","\""] ) )* "\"" > }
+TOKEN : { < TRUE_TOK : "WIN" > }
+TOKEN : { < FALSE_TOK : "FAIL" > }
+
+/* Conditionals */
+TOKEN : { < IF_TOK : "O RLY?" > }
+TOKEN : { < THEN_TOK : "YA RLY" > }
+TOKEN : { < ELSE_TOK : "NO WAI" | "NO WAY" > }
+TOKEN : { < END_TOK : "OIC" > }
+TOKEN : { < ELSEIF_TOK : "MEBBE" > }
+
+/* Case */
+TOKEN : { < SWITCH_TOK : "WTF?" > }
+TOKEN : { < CASE_TOK : "OMG" > }
+TOKEN : { < BREAK_TOK : "GTFO" > }
+TOKEN : { < DEFAULT_TOK : "OMGWTF" > }
+
+/* Loops */
+TOKEN : { < LOOP_TOK : "IM IN YR" > }
+TOKEN : { < LOOPEND_TOK : "IM OUTTA YR" > }
+TOKEN : { < PARAM_TOK : "YR" > }
+TOKEN : { < INCREMENT_TOK : "UPPIN" > }
+TOKEN : { < DECREMENT_TOK : "NERFIN" > }
+TOKEN : { < UNTIL_TOK : "TIL" > }
+TOKEN : { < WHILE_TOK : "WILE" > }
+
+/* Functions */
+TOKEN : { < FUNCTION_TOK : "HOW DUZ I" > }
+TOKEN : { < FUNCTIONEND_TOK : "IF U SAY SO" > }
+TOKEN : { < FOUNDYR_TOK : "FOUND YR" > }
+
+TOKEN : { < IDENTIFIER_TOK : ["a"-"z","A"-"Z"](["a"-"z","A"-"Z","0"-"9","_"])* > }
+
+void Hai():
+{
+	Token versionToken;
+}
+{
+	{enter();}
+	(<PROGRAM_START_TOK> versionToken=<FLOAT_TOK> lineSeparator())
+	{exit();}
+}
+
+void Bai():
+{}
+{
+	{enter();}
+	(<PROGRAM_END_TOK> (lineSeparator())? <EOF>)
+	{exit();}
+}
+
+void literalValue() #literalValue:
+{
+	Token t;
+}
+{
+	{enter();}
+	(
+		t=<DECIMAL_TOK>
+		{jjtThis.type = ASTliteralValue.LiteralType.DECIMAL;}
+		|
+		t=<FLOAT_TOK>
+		{jjtThis.type = ASTliteralValue.LiteralType.FLOAT;}
+		|
+		t=<STRING_TOK>
+		{jjtThis.type = ASTliteralValue.LiteralType.STRING;}
+		|
+		t=<TRUE_TOK>
+		{jjtThis.type = ASTliteralValue.LiteralType.BOOLEAN;}
+		|
+		t=<FALSE_TOK>
+		{jjtThis.type = ASTliteralValue.LiteralType.BOOLEAN;}
+	)
+	{p(t.image);}
+	{jjtThis.value = t.image;}
+	{exit();}
+}
+
+void unaryOperator() #unaryOperator:
+{}
+{
+	{enter();}
+	<NOT_OP_TOK> primaryExpression()
+	{exit();}
+}
+
+void binaryOperator() #binaryOperator:
+{
+	Token t;
+}
+{
+	{enter();}
+	(
+		(t=<SUM_OP_TOK>)
+		{jjtThis.type = BinaryOpType.SUM;}
+		|
+		(t=<SUB_OP_TOK>)
+		{jjtThis.type = BinaryOpType.DIFF;}
+		|
+		(t=<MUL_OP_TOK>)
+		{jjtThis.type = BinaryOpType.PROD;}
+		|
+		(t=<DIV_OP_TOK>)
+		{jjtThis.type = BinaryOpType.DIV;}
+		|
+		(t=<MOD_OP_TOK>)
+		{jjtThis.type = BinaryOpType.MOD;}
+		|
+		(t=<MAX_OP_TOK>)
+		{jjtThis.type = BinaryOpType.MAX;}
+		|
+		(t=<MIN_OP_TOK>)
+		{jjtThis.type = BinaryOpType.MIN;}
+		|
+		(t=<AND_OP_TOK>)
+		{jjtThis.type = BinaryOpType.AND;}
+		|
+		(t=<EQ_OP_TOK>)
+		{jjtThis.type = BinaryOpType.EQ;}
+		|
+		(t=<OR_OP_TOK>)
+		{jjtThis.type = BinaryOpType.OR;}
+		|
+		(t=<XOR_OP_TOK>)
+		{jjtThis.type = BinaryOpType.XOR;}
+		|
+		(t=<NEQ_OP_TOK>)
+		{jjtThis.type = BinaryOpType.NEQ;}
+	)
+	{p(t.image);}
+	primaryExpression()
+	
+	<AND_TOK>
+	
+	primaryExpression()
+	
+	{exit();}
+}
+
+void infiniteArityOperator() #infiniteArityOperator:
+{
+	Token t;
+}
+{
+	{enter();}
+	(
+		(
+		t=<ALL_OP_TOK>
+		{ jjtThis.type = InfArityOpType.ALL; }
+		|
+		t=<ANY_OP_TOK>
+		{ jjtThis.type = InfArityOpType.ANY; }
+		|
+		t=<CONCAT_TOK>
+		{ jjtThis.type = InfArityOpType.CONCAT; }
+		)
+		primaryExpression()
+		(<AND_TOK> primaryExpression())*
+		<OP_END_TOK>
+	)
+	{p(t.image);}
+	{exit();}
+}
+
+void operator():
+{}
+{
+	{enter();}
+	(unaryOperator() | binaryOperator() | infiniteArityOperator())
+	{exit();}
+}
+
+void functionArgumentList(int nbArgs):
+{}
+{	
+	LOOKAHEAD({nbArgs > 1}) (primaryExpression() functionArgumentList(nbArgs - 1))
+	|
+	LOOKAHEAD({nbArgs == 1}) (primaryExpression())	
+}
+
+void variableOrFunctionExpression() #variableOrFunctionExpression:
+{
+	Token symbolToken;
+	int nbParams;
+}
+{
+	{enter();}
+	(
+	symbolToken=<IDENTIFIER_TOK>
+	
+	{p(symbolToken.image);}
+	
+	{
+		jjtThis.name = symbolToken.image;
+	}
+	
+	{nbParams = getNbParams(symbolToken.image);}
+	
+	{
+		jjtThis.nbArgs = nbParams;
+	}
+	
+	[ LOOKAHEAD( { nbParams > 0 } ) functionArgumentList(nbParams) ]
+	)
+	{exit();}
+}
+
+void castExpression() #castExpression:
+{}
+{
+	<MAKE_TOK> primaryExpression() <A_TOK>
+	
+	(
+	<NO_TYPE_TOK>
+	{ jjtThis.type = ASTcastExpression.Type.NOTYPE; }
+	|
+	<STRING_TYPE_TOK>
+	{ jjtThis.type = ASTcastExpression.Type.STRING; }
+	|
+	<INT_TYPE_TOK>
+	{ jjtThis.type = ASTcastExpression.Type.INTEGER; }
+	|
+	<FLOAT_TYPE_TOK>
+	{ jjtThis.type = ASTcastExpression.Type.FLOAT; }
+	|
+	<BOOL_TYPE_TOK>
+	{ jjtThis.type = ASTcastExpression.Type.BOOLEAN; }
+	)
+	
+}
+
+void primaryExpression() #primaryExpression:
+{}
+{
+	{enter();}
+	
+	(
+		operator()
+		{ jjtThis.type = ASTprimaryExpression.PrimaryExpressionType.OPERATOR; }
+		|
+		literalValue()
+		{ jjtThis.type = ASTprimaryExpression.PrimaryExpressionType.LITERAL; }
+		|
+		<IT_TOK>
+		{ jjtThis.type = ASTprimaryExpression.PrimaryExpressionType.IT; }
+		|
+		castExpression()
+		{ jjtThis.type = ASTprimaryExpression.PrimaryExpressionType.CAST; }
+		|
+		LOOKAHEAD({ getToken(1).kind == IDENTIFIER_TOK && isSymbol( getToken(1).image ) })
+		variableOrFunctionExpression()
+		{ jjtThis.type = ASTprimaryExpression.PrimaryExpressionType.VAR_OR_FUNC; }
+	)
+	
+	{exit();}
+}
+
+
+void variableDeclaration() #variableDeclaration:
+{
+	Token symbolToken;
+}
+{
+	{enter();}
+	<VAR_DECL_TOK> symbolToken=<IDENTIFIER_TOK>
+	{p("Variable name: " + symbolToken.image);}
+	{ addSymbol(symbolToken.image, -1); }
+	{ jjtThis.name = symbolToken.image; }
+	
+	(<VAR_INIT_TOK> primaryExpression())?
+	{exit();}
+}
+
+void consoleOutput() #consoleOutput:
+{}
+{
+	{enter();}
+	<CONSOLE_OUTPUT_TOK> ( primaryExpression() )+ (<EXCL_TOK>)?
+	{exit();}
+}
+
+void consoleInput() #consoleInput:
+{
+	Token variableToken;
+}
+{
+	{enter();}
+	<CONSOLE_INPUT_TOK> variableToken=<IDENTIFIER_TOK>
+	{
+		jjtThis.variable = variableToken.image;
+	}	
+	{exit();}
+}
+
+void thenBlock() #thenBlock:
+{}
+{
+	<THEN_TOK> lineSeparator()
+	codeBlock()
+}
+
+void elseIfBlock() #elseIfBlock:
+{}
+{
+	<ELSEIF_TOK> primaryExpression() lineSeparator()
+	codeBlock()
+}
+
+void elseBlock() #elseBlock:
+{}
+{
+	<ELSE_TOK> lineSeparator()
+	codeBlock()
+}
+
+void conditionalExpression() #conditionalExpression:
+{}
+{
+	{pushScope();}
+	<IF_TOK> lineSeparator()
+	
+	thenBlock()
+	(
+		elseIfBlock()
+		{jjtThis.nbElseIf++;}
+	)*
+	(
+		elseBlock()
+		{jjtThis.hasElse = true;}
+	)?
+	
+	<END_TOK> 
+	{popScope();}
+}
+
+void caseBlock() #caseBlock:
+{}
+{
+	<CASE_TOK> literalValue() lineSeparator()
+	codeBlock()
+}
+
+void defaultBlock() #defaultBlock:
+{}
+{
+	<DEFAULT_TOK> lineSeparator()
+	codeBlock()
+}
+
+void switchExpression() #switchExpression:
+{}
+{
+	{pushScope();}
+	<SWITCH_TOK> lineSeparator()
+	(caseBlock())*
+	
+	(
+		defaultBlock()
+		{jjtThis.hasDefault = true;}
+	)?
+	<END_TOK>
+	{popScope();}
+}
+
+void loopHeader(ASTloopExpression loop):
+{
+	Token loopVariableToken, loopNameToken, loopOperationToken;
+}
+{
+	<LOOP_TOK>
+	loopNameToken=<IDENTIFIER_TOK>
+	{loop.name = loopNameToken.image;}
+	(
+		loopOperationToken = <IDENTIFIER_TOK>
+		{loop.operation = LoopOperation.CUSTOM;}
+		{loop.customOperation = loopOperationToken.image;}
+		|
+		<INCREMENT_TOK>
+		{loop.operation = LoopOperation.INCREMENT;}
+		|
+		<DECREMENT_TOK>
+		{loop.operation = LoopOperation.DECREMENT;}
+	)
+	<PARAM_TOK> loopVariableToken=<IDENTIFIER_TOK>
+	{
+		loop.loopVariable = loopVariableToken.image;
+	}
+	(
+		(
+			<UNTIL_TOK>
+			{loop.loopLimit = LoopLimit.UNTIL;}
+			|
+			<WHILE_TOK>
+			{loop.loopLimit = LoopLimit.WHILE;}
+		)
+		
+		primaryExpression()
+	)?
+	 lineSeparator()
+}
+
+void loopFooter():
+{}
+{
+	<LOOPEND_TOK> <IDENTIFIER_TOK>
+}
+
+void loopExpression() #loopExpression:
+{}
+{
+	{enter();}
+	{pushScope();}
+	loopHeader(jjtThis)
+	codeBlock()
+	loopFooter()
+	{popScope();}
+	{exit();}
+}
+
+void assignationExpression() #assignationExpression:
+{
+	Token t;
+}
+{
+	LOOKAHEAD({ getToken(1).kind == IDENTIFIER_TOK && getToken(2).kind == ASSIGN_TOK && isSymbol( getToken(1).image ) })
+	{enter();}
+	
+	t=<IDENTIFIER_TOK>
+	{
+		p("Assigned variable: " + t.image);
+		jjtThis.name = t.image;
+	}
+	<ASSIGN_TOK>
+	primaryExpression()
+	
+	{exit();}
+}
+
+void castVariableExpression() #castVariableExpression:
+{
+	Token t;
+}
+{
+	LOOKAHEAD({ getToken(1).kind == IDENTIFIER_TOK && getToken(2).kind == CAST_TOK && isSymbol( getToken(1).image ) })
+	{enter();}
+	
+	t=<IDENTIFIER_TOK>
+	{
+		p("Casted variable: " + t.image);
+		jjtThis.name = t.image;
+	}
+	
+	<CAST_TOK>
+	
+	(
+	<NO_TYPE_TOK>
+	{ jjtThis.type = ASTcastVariableExpression.Type.NOTYPE; }
+	|
+	<STRING_TYPE_TOK>
+	{ jjtThis.type = ASTcastVariableExpression.Type.STRING; }
+	|
+	<INT_TYPE_TOK>
+	{ jjtThis.type = ASTcastVariableExpression.Type.INTEGER; }
+	|
+	<FLOAT_TYPE_TOK>
+	{ jjtThis.type = ASTcastVariableExpression.Type.FLOAT; }
+	|
+	<BOOL_TYPE_TOK>
+	{ jjtThis.type = ASTcastVariableExpression.Type.BOOLEAN; }
+	)
+	
+	{exit();}
+}
+
+void codeBlock():
+{}
+{
+	(expression())*
+}
+
+int functionParameterList(ASTfunctionDefinition func):
+{
+	int nbParams = 0;
+	Token parameterToken;
+}
+{
+	{enter();}
+
+	(
+		/* Un premier parametre */
+		<PARAM_TOK> parameterToken=<IDENTIFIER_TOK>
+		{
+			nbParams++;
+			addSymbol(parameterToken.image, -1);
+			func.params.add(parameterToken.image);
+		}
+		
+		/* Les parametres suivants */
+		(
+			<AND_TOK> <PARAM_TOK> parameterToken=<IDENTIFIER_TOK>
+			{
+				nbParams++;
+				addSymbol(parameterToken.image, -1);
+				func.params.add(parameterToken.image);
+			}
+		)*
+	)?
+
+	{exit();}
+	
+	{return nbParams;}
+}
+
+void functionDefinition() #functionDefinition:
+{
+	Token functionNameToken;
+	int nbParams;
+}
+{
+	{enter();}
+	{pushScope();}
+	<FUNCTION_TOK>
+	functionNameToken=<IDENTIFIER_TOK>
+	{
+		jjtThis.name = functionNameToken.image;
+	}
+	
+	nbParams=functionParameterList(jjtThis)
+	lineSeparator()
+	
+	{
+		p("Function name: " + functionNameToken.image);
+		addSymbolToParent(functionNameToken.image, nbParams);
+	}
+	
+	codeBlock()
+	
+	<FUNCTIONEND_TOK>
+	{popScope();}	
+	{exit();}
+}
+
+void expression():
+{}
+{
+	{enter();}
+	(
+	(
+		variableDeclaration()
+		|
+		conditionalExpression()
+		|
+		switchExpression()
+		|
+		loopExpression()
+		|
+		consoleOutput()
+		|
+		consoleInput()
+		|
+		functionDefinition()
+		|
+		<BREAK_TOK> #breakExpression
+		|
+		<FOUNDYR_TOK> primaryExpression() #returnExpression
+		|
+		assignationExpression()
+		|
+		castVariableExpression()
+		|
+		primaryExpression()
+	)
+	lineSeparator()
+	)
+	{exit();}
+}
+
+void lineSeparator():
+{}
+{
+	(<EOL_TOK> | <COMMA_TOK> | <EOL_TOK2>)+
+}
+
+SimpleNode Start() #start :
+{}
+{
+	{enter();}
+	{pushScope();}
+	
+	(lineSeparator())?
+	Hai()
+	codeBlock()
+	Bai()
+
+	{popScope();}
+	{exit();}
+	{ return jjtThis; }
+}
