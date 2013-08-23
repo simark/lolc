@@ -22,7 +22,6 @@ Run tests:
 
 ```
 $ make tests
-
 ```
 
 There are lolcode progam examples in the tests directory. The most interesting ones (although not very interesting) are:
